@@ -83,13 +83,15 @@ port(
 end SUBunitsMiSTer;
 
 architecture MAIN of SUBunitsMiSTer is
-component T80a
+component T80pa
     generic(
         Mode : integer := 0 -- 0 => Z80, 1 => Fast Z80, 2 => 8080, 3 => GB
     );
     port(
         RESET_n     : in std_logic;
-        CLK_n       : in std_logic;
+        CLK	        : in std_logic;
+		CEN_p       : in  std_logic := '1';
+        CEN_n       : in  std_logic := '1';
         WAIT_n      : in std_logic;
         INT_n       : in std_logic;
         NMI_n       : in std_logic;
@@ -103,7 +105,8 @@ component T80a
         HALT_n      : out std_logic;
         BUSAK_n     : out std_logic;
         A           : out std_logic_vector(15 downto 0);
-        D           : inout std_logic_vector(7 downto 0)
+		DI          : in  std_logic_vector(7 downto 0);
+        DO          : out std_logic_vector(7 downto 0)
     );
 end component;
 
@@ -574,7 +577,7 @@ end component;
 signal	CPUrstn	:std_logic;
 signal	EMUINITDONEb	:std_logic;
 signal	IDAT	:std_logic_vector(7 downto 0);
-signal	CPUDAT	:std_logic_vector(7 downto 0);
+signal	CPUDATIN, CPUDATOUT	:std_logic_vector(7 downto 0);
 -- signal	IDAT_IO12	:std_logic_vector(7 downto 0);
 -- signal	IO12_OE		:std_logic;
 signal	IDAT_PPI	:std_logic_vector(7 downto 0);
@@ -640,10 +643,10 @@ signal	fde_cpyen	:std_logic;
 begin
 
 	CPUrstn<=rstn and EMUINITDONEb;
-	mondat<=CPUDAT;
-	cpu:T80a generic map(0)port map(
+	mondat<=CPUDATOUT;
+	cpu:T80pa generic map(0)port map(
        RESET_n		=>CPUrstn,
-        CLK_n		=>CPUCLK,
+        CLK 		=>CPUCLK,
         WAIT_n		=>not RAMWAIT,
         INT_n       =>INTn,
 --        INT_n       =>'1',
@@ -658,7 +661,8 @@ begin
         HALT_n      =>open,
         BUSAK_n     =>open,
         A           =>ADR,
-        D           =>CPUDAT
+        DI			=>CPUDATIN,
+		DO			=>CPUDATOUT
 	);
 
 	mmap	:mmapsub generic map(awidth) port map(
@@ -673,20 +677,20 @@ begin
 		rstn		=>CPUrstn
 	);
 	
-	CPUDAT<=	IDAT_INT	when INT_OE='1'  else
+	CPUDATIN<=	IDAT_INT	when INT_OE='1'  else
 				RAMRDAT when RAMCE='1' and RDn='0' else
 				-- IDAT_IO12	when IO12_OE='1' else
 				IDAT_PPI	when PPI_OE='1' else
 				IDAT_FDC	when FDC_OE='1'  else
 				(others=>'Z');
 	
-	RAMWDAT<=CPUDAT;
+	RAMWDAT<=CPUDATOUT;
 	RAMWR<=RAMCE and not WRn;
 	RAMRD<=RAMCE and not RDn;
 	
---	IO12	:IO_RWS generic map(x"12") port map(ADR(7 downto 0),IORQn,RDn,WRn,CPUDAT,IDAT_IO12,IO12_OE,monout(7),monout(6),monout(5),monout(4),monout(3),monout(2),monout(1),monout(0),CPUCLK,CPUrstn);
-	IOf4	:IO_WRS generic map(x"f4") port map(ADR(7 downto 0),IORQn,WRn,CPUDAT,open,open,open,open,TD1,TD0,RV1,RV0,CPUCLK,CPUrstn);
-	IOf8	:IO_WRS generic map(x"f8") port map(ADR(7 downto 0),IORQn,WRn,CPUDAT,open,open,open,open,PSEN,open,MON1S,MON0S,CPUCLK,CPUrstn);
+--	IO12	:IO_RWS generic map(x"12") port map(ADR(7 downto 0),IORQn,RDn,WRn,CPUDATOUT,IDAT_IO12,IO12_OE,monout(7),monout(6),monout(5),monout(4),monout(3),monout(2),monout(1),monout(0),CPUCLK,CPUrstn);
+	IOf4	:IO_WRS generic map(x"f4") port map(ADR(7 downto 0),IORQn,WRn,CPUDATOUT,open,open,open,open,TD1,TD0,RV1,RV0,CPUCLK,CPUrstn);
+	IOf8	:IO_WRS generic map(x"f8") port map(ADR(7 downto 0),IORQn,WRn,CPUDATOUT,open,open,open,open,PSEN,open,MON1S,MON0S,CPUCLK,CPUrstn);
 	IOf8r	:IO_DETAC generic map(x"f8") port map(ADR(7 downto 0),IORQn,RDn,TC,CPUCLK,CPUrstn);
 	
 	TDSEL<=TD0 when FD_USEL="00" else TD1 when FD_USEL="01" else '0';
@@ -700,7 +704,7 @@ begin
 		RDn		=>RDn,
 		WRn		=>WRn,
 		ADR		=>ADR(1 downto 0),
-		DATIN	=>CPUDAT,
+		DATIN	=>CPUDATOUT,
 		DATOUT	=>IDAT_PPI,
 		DATOE	=>PPI_OE,
 		
@@ -756,7 +760,7 @@ port map(
 	WRn		=>WRn,
 	CSn		=>FDC_CEn,
 	A0		=>ADR(0),
-	WDAT	=>CPUDAT,
+	WDAT	=>CPUDATOUT,
 	RDAT	=>IDAT_FDC,
 	DATOE	=>FDC_OE,
 	DACKn	=>'1',

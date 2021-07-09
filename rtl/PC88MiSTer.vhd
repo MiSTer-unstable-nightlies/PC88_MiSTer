@@ -236,13 +236,15 @@ port(
 );
 end component;
 
-component T80a
+component T80pa
     generic(
         Mode : integer := 0 -- 0 => Z80, 1 => Fast Z80, 2 => 8080, 3 => GB
     );
     port(
         RESET_n     : in std_logic;
-        CLK_n       : in std_logic;
+        CLK	        : in std_logic;
+		CEN_p       : in  std_logic := '1';
+        CEN_n       : in  std_logic := '1';
         WAIT_n      : in std_logic;
         INT_n       : in std_logic;
         NMI_n       : in std_logic;
@@ -256,7 +258,8 @@ component T80a
         HALT_n      : out std_logic;
         BUSAK_n     : out std_logic;
         A           : out std_logic_vector(15 downto 0);
-        D           : inout std_logic_vector(7 downto 0)
+        DI          : in  std_logic_vector(7 downto 0);
+        DO          : out std_logic_vector(7 downto 0)
     );
 end component;
 
@@ -1049,7 +1052,7 @@ signal	RAM_WR		:std_logic;
 signal	RAM_RD		:std_logic;
 signal	RAM_WDAT	:std_logic_vector(7 downto 0);
 signal	IDAT_RAM	:std_logic_vector(7 downto 0);
-signal	CPUDAT		:std_logic_vector(7 downto 0);
+signal	CPUDATIN, CPUDATOUT		:std_logic_vector(7 downto 0);
 signal	RD_n		:std_logic;
 signal	WR_n		:std_logic;
 signal	MREQ_n		:std_logic;
@@ -1402,10 +1405,10 @@ begin
 		end if;
 	end process;
 	
-	CPU	:T80a generic map(0)
+	CPU	:T80pa generic map(0)
 	port map(
 		RESET_n	=>CPU_rstn,
-		CLK_n	=>CPU_clk,
+		CLK		=>CPU_clk,
 --		CLK_n	=>slowclk,
 --		CLK_n	=>pPsw(0),
 		WAIT_n	=>WAIT_n,
@@ -1421,7 +1424,8 @@ begin
 		HALT_n	=>open,
 		BUSAK_n	=>BUSACK_n,
 		A		=>CPUADRp,
-		D		=>CPUDAT
+		DI		=>CPUDATIN,
+		DO		=>CPUDATOUT
 	);
 
 	IORQ_n	<=IORQ_np	when BUSACK_n='1' else '1';
@@ -1451,7 +1455,7 @@ begin
 	RDn			=>RD_n,
 	M1n			=>M1_n,
 	RFRSHn		=>REFRSHn,
-	DATIN		=>CPUDAT,
+	DATIN		=>CPUDATOUT,
 	DATOUT		=>IDAT_INTC,
 	DATOE		=>INTC_OE,
 
@@ -1477,7 +1481,7 @@ begin
 	CPU_IORQn	=>IORQ_n,
 	CPU_RDn		=>RD_n,
 	CPU_WRn		=>WR_n,
-	CPU_WDAT	=>CPUDAT,
+	CPU_WDAT	=>CPUDATOUT,
 	CPU_RDAT	=>IDAT_MAP,
 	CPU_OE		=>MAP_OE,
 	
@@ -1520,7 +1524,7 @@ begin
 			MAP_RADR;
 	RAM_WDAT<=	CLR_WDAT when CLR_OE='1' else 
 				LOADER_WDAT when LOADER_OE='1' else
-				 CPUDAT;
+				CPUDATOUT;
 	RAM_WR<=	CLR_WR when CLR_OE='1' else
 				LOADER_WR when LOADER_OE='1' else
 				(RAM_CE and (not WR_n));
@@ -1673,7 +1677,7 @@ port map(
 		address_a		=>TRAM_ADR,
 		address_b		=>TCNV_TADR,
 		clock			=>gclk,
-		data_a			=>CPUDAT,
+		data_a			=>CPUDATOUT,
 		data_b			=>(others=>'0'),
 		wren_a			=>TRAM_CE and (not WR_n),
 		wren_b			=>'0',
@@ -1717,7 +1721,7 @@ port map(
 	rstn		=>srstn
 );
 
-	TVRAM_WDAT	<=CPUDAT					when TMODE='0' and TVRMODE='1' else TCNV_WDAT;
+	TVRAM_WDAT	<=CPUDATOUT					when TMODE='0' and TVRMODE='1' else TCNV_WDAT;
 	TVRAM_ADR	<=TVRAM_MADR 				when TMODE='0' and TVRMODE='1' else TCNV_WADR;
 	TVRAM_WE	<=TVRAM_CE and (not WR_n)	when TMODE='0' and TVRMODE='1' else TCNV_WE;
 
@@ -1749,7 +1753,7 @@ port map(
 	IORQn	=>IORQ_n,
 	WRn		=>WR_n,
 	RDn		=>RD_n,
-	DATIN	=>CPUDAT,
+	DATIN	=>CPUDATOUT,
 	DATOUT	=>IDAT_CRTR,
 	DATOE	=>CRTR_OE,
 
@@ -1810,7 +1814,7 @@ port map(
 	rstn	=>CPU_rstn
 );
 	
-	CPUDAT<=
+	CPUDATIN<=
 				IDAT_RAM	when GRAM_M_OE='1' else
 				IDAT_ALU	when ALU_OE='1' else
 				IDAT_RAM	when (RAM_CE='1' and RD_n='0') else
@@ -1835,24 +1839,24 @@ port map(
 				(others=>'1') when IORQ_n='0' and RD_n='0' else
 				(others=>'Z');
 	
---	pMonDBus<=CPUDAT;
+--	pMonDBus<=CPUDATOUT;
 
-	IOW10	:IO_WRS generic map(x"10")port map(CPUADR(7 downto 0),IORQ_n,WR_n,CPUDAT,open,open,open,open,C_DO,C_RTC(2),C_RTC(1),C_RTC(0),CPU_clk,CPU_rstn);
+	IOW10	:IO_WRS generic map(x"10")port map(CPUADR(7 downto 0),IORQ_n,WR_n,CPUDATOUT,open,open,open,open,C_DO,C_RTC(2),C_RTC(1),C_RTC(0),CPU_clk,CPU_rstn);
 	IOR30	:IO_RD generic map(x"30")port map(CPUADR(7 downto 0),IORQ_n,RD_n,IDAT_IOR30,IOR30_OE,'0','0','0','0',c20L,c40C,cBT,cN);
-	IOW30	:IO_WRS generic map(x"30")port map(CPUADR(7 downto 0),IORQ_n,WR_n,CPUDAT,open,open,BS(1),BS(0),MTON,CDS,COLORn,HMODE,CPU_clk,CPU_rstn);
+	IOW30	:IO_WRS generic map(x"30")port map(CPUADR(7 downto 0),IORQ_n,WR_n,CPUDATOUT,open,open,BS(1),BS(0),MTON,CDS,COLORn,HMODE,CPU_clk,CPU_rstn);
 	IOR31	:IO_RD generic map(x"31")port map(CPUADR(7 downto 0),IORQ_n,RD_n,IDAT_IOR31,IOR31_OE,cVer,cHS,'1','1','1','0','1','1');
-	IOW31	:IO_WRS generic map(x"31")port map(CPUADR(7 downto 0),IORQ_n,WR_n,CPUDAT,open,open,open,GCOLOR,GRAPHEN,RMODE,MMODE,L200,CPU_clk,CPU_rstn);
-	IO32	:IO_RWS generic map(x"32")port map(CPUADR(7 downto 0),IORQ_n,RD_n,WR_n,CPUDAT,IDAT_IOR32,IOR32_OE,SINTM,open,PMODE,TMODE,open,open,EROMSEL1,EROMSEL0,CPU_clk,CPU_rstn);
-	IO33	:IO_RWS generic map(x"33")port map(CPUADR(7 downto 0),IORQ_n,RD_n,WR_n,CPUDAT,IDAT_IOR33,IOR33_OE,open,open,open,open,open,open,open,open,CPU_clk,CPU_rstn);
-	IOW34	:IO_WRS generic map(x"34")port map(CPUADR(7 downto 0),IORQ_n,WR_n,CPUDAT,open,ALU2(1),ALU1(1),ALU0(1),open,ALU2(0),ALU1(0),ALU0(0),CPU_clk,CPU_rstn);
-	IOW35	:IO_WRS generic map(x"35")port map(CPUADR(7 downto 0),IORQ_n,WR_n,CPUDAT,GAM,open,GDM(1),GDM(0),open,PLN(2),PLN(1),PLN(0),CPU_clk,CPU_rstn);
-	IO38	:IO_RWS generic map(x"38")port map(CPUADR(7 downto 0),IORQ_n,RD_n,WR_n,CPUDAT,IDAT_IOR38,IOR38_OE,open,open,open,open,open,open,open,TVRMODE,CPU_clk,CPU_rstn);
+	IOW31	:IO_WRS generic map(x"31")port map(CPUADR(7 downto 0),IORQ_n,WR_n,CPUDATOUT,open,open,open,GCOLOR,GRAPHEN,RMODE,MMODE,L200,CPU_clk,CPU_rstn);
+	IO32	:IO_RWS generic map(x"32")port map(CPUADR(7 downto 0),IORQ_n,RD_n,WR_n,CPUDATOUT,IDAT_IOR32,IOR32_OE,SINTM,open,PMODE,TMODE,open,open,EROMSEL1,EROMSEL0,CPU_clk,CPU_rstn);
+	IO33	:IO_RWS generic map(x"33")port map(CPUADR(7 downto 0),IORQ_n,RD_n,WR_n,CPUDATOUT,IDAT_IOR33,IOR33_OE,open,open,open,open,open,open,open,open,CPU_clk,CPU_rstn);
+	IOW34	:IO_WRS generic map(x"34")port map(CPUADR(7 downto 0),IORQ_n,WR_n,CPUDATOUT,open,ALU2(1),ALU1(1),ALU0(1),open,ALU2(0),ALU1(0),ALU0(0),CPU_clk,CPU_rstn);
+	IOW35	:IO_WRS generic map(x"35")port map(CPUADR(7 downto 0),IORQ_n,WR_n,CPUDATOUT,GAM,open,GDM(1),GDM(0),open,PLN(2),PLN(1),PLN(0),CPU_clk,CPU_rstn);
+	IO38	:IO_RWS generic map(x"38")port map(CPUADR(7 downto 0),IORQ_n,RD_n,WR_n,CPUDATOUT,IDAT_IOR38,IOR38_OE,open,open,open,open,open,open,open,TVRMODE,CPU_clk,CPU_rstn);
 	IOR40	:IO_RD generic map(x"40")port map(CPUADR(7 downto 0),IORQ_n,RD_n,IDAT_IOR40,IOR40_OE,'0','0',VRTC,CDI,cDisk,'1','0','0');
-	IOW40	:IO_WRS generic map(x"40")port map(CPUADR(7 downto 0),IORQ_n,WR_n,CPUDAT,open,pStr,beepen,open,open,CCK,CSTB,open,CPU_clk,CPU_rstn);
+	IOW40	:IO_WRS generic map(x"40")port map(CPUADR(7 downto 0),IORQ_n,WR_n,CPUDATOUT,open,pStr,beepen,open,open,CCK,CSTB,open,CPU_clk,CPU_rstn);
 	IOR6e	:IO_RD generic map(x"6e")port map(CPUADR(7 downto 0),IORQ_n,RD_n,IDAT_IOR6e,IOR6e_OE,not CPUMD,'1','1','1','1','1','1','1');
-	IOW53	:IO_WRS generic map(x"53")port map(CPUADR(7 downto 0),IORQ_n,WR_n,CPUDAT,open,open,open,open,GxDS(2),GxDS(1),GxDS(0),TEXTDS,CPU_clk,CPU_rstn);
-	IOW71	:IO_WRS generic map(x"71")port map(CPUADR(7 downto 0),IORQ_n,WR_n,CPUDAT,open,open,open,open,open,open,open,IEROM,CPU_clk,CPU_rstn);
-	TDREG	:TDMAREGS generic map(x"64",x"65",x"68") port map(CPUADR(7 downto 0),IORQ_n,WR_n,CPUDAT,TRAMTOP,TRAMLEN,TDMAEN,CPU_clk,CPU_rstn);
+	IOW53	:IO_WRS generic map(x"53")port map(CPUADR(7 downto 0),IORQ_n,WR_n,CPUDATOUT,open,open,open,open,GxDS(2),GxDS(1),GxDS(0),TEXTDS,CPU_clk,CPU_rstn);
+	IOW71	:IO_WRS generic map(x"71")port map(CPUADR(7 downto 0),IORQ_n,WR_n,CPUDATOUT,open,open,open,open,open,open,open,IEROM,CPU_clk,CPU_rstn);
+	TDREG	:TDMAREGS generic map(x"64",x"65",x"68") port map(CPUADR(7 downto 0),IORQ_n,WR_n,CPUDATOUT,TRAMTOP,TRAMLEN,TDMAEN,CPU_clk,CPU_rstn);
 	pStrA<=pStr;
 	pStrB<=pStr;
 	
@@ -1864,7 +1868,7 @@ port map(
 		RDn		=>RD_n,
 		WRn		=>WR_n,
 		ADR		=>CPUADR(1 downto 0),
-		DATIN	=>CPUDAT,
+		DATIN	=>CPUDATOUT,
 		DATOUT	=>IDAT_PPIFD,
 		DATOE	=>PPIFD_OE,
 		
@@ -1890,7 +1894,7 @@ port map(
 		IORQn	=>IORQ_n,
 		RDn		=>RD_n,
 		WRn		=>WR_n,
-		WDAT	=>CPUDAT,
+		WDAT	=>CPUDATOUT,
 		
 		KNJADR	=>KANJI1ADR,
 		KNJRD	=>KANJI1RD,
@@ -1904,7 +1908,7 @@ port map(
 		IORQn	=>IORQ_n,
 		RDn		=>RD_n,
 		WRn		=>WR_n,
-		WDAT	=>CPUDAT,
+		WDAT	=>CPUDATOUT,
 		
 		KNJADR	=>KANJI2ADR,
 		KNJRD	=>KANJI2RD,
@@ -1937,7 +1941,7 @@ port map(
 	IORQn		=>IORQ_n,
 	WRn			=>WR_n,
 	ADR			=>CPUADR(7 downto 0),
-	WDAT		=>CPUDAT,
+	WDAT		=>CPUDATOUT,
 	PALEN		=>'1',
 	
 	TRAM_ADR	=>CRTC_TADR,
@@ -2113,7 +2117,7 @@ OPNS	:sftgen generic map(2) port map(2,OPNsft,clk21m,srstn);	--22.222/2=11.111MH
 		PSG_CEn<=IORQ_n when CPUADR(7 downto 1)="0100010" else '1';		--0x44,45
 
 		FMS	:OPN generic map(16) port map(
-			DIN		=>CPUDAT,
+			DIN		=>CPUDATOUT,
 			DOUT	=>IDAT_PSG,
 			DOE		=>PSG_OE,
 			CSn		=>PSG_CEn,
@@ -2150,7 +2154,7 @@ OPNS	:sftgen generic map(2) port map(2,OPNsft,clk21m,srstn);	--22.222/2=11.111MH
 		PSG_CEn<=IORQ_n when CPUADR(7 downto 2)="010001" else '1';		--0x44,45,46,47
 	
 		FMS	:OPNA generic map(16) port map(
-			DIN		=>CPUDAT,
+			DIN		=>CPUDATOUT,
 			DOUT	=>IDAT_PSG,
 			DOE		=>PSG_OE,
 			CSn		=>PSG_CEn,
@@ -2213,7 +2217,7 @@ OPNS	:sftgen generic map(2) port map(2,OPNsft,clk21m,srstn);	--22.222/2=11.111MH
 		RDn		=>RD_n,
 		C_Dn	=>CPUADR(0),
 		CSn		=>COM_CSn,
-		DATIN	=>CPUDAT,
+		DATIN	=>CPUDATOUT,
 		DATOUT	=>IDAT_COM,
 		DATOE	=>COM_OE,
 		
