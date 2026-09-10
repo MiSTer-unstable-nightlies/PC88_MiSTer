@@ -1224,6 +1224,8 @@ signal	IDAT_INTC	:std_logic_vector(7 downto 0);
 signal	INTC_OE		:std_logic;
 signal	HRTC		:std_logic;
 signal	VRTC		:std_logic;
+signal	HRTCr		:std_logic;
+signal	VRTCr		:std_logic;
 signal	CDI			:std_logic;
 signal	CCK			:std_logic;
 signal	CSTB		:std_logic;
@@ -1565,7 +1567,17 @@ begin
 	
 
 
-	VRTCi<=not VRTC;
+	--HRTC/VRTC are combinational outputs of the rclk domain (synccont2.vhd), so TRAMCONV
+	--can latch a decoding glitch when it reads them from clk21m. Register them here
+	--first. The added latency is one rclk period.
+	process(rclk)begin
+		if(rclk' event and rclk='1')then
+			HRTCr<=HRTC;
+			VRTCr<=VRTC;
+		end if;
+	end process;
+	--Port 40h below keeps the raw VRTC; this path gains one rclk cycle of latency.
+	VRTCi<=not VRTCr;
 
 	INT0n<=not INT_COMRX;
 	INT1n<=VRTCi;
@@ -1857,8 +1869,8 @@ port map(
 	TVRAM_WDAT	=>TCNV_WDAT,
 	TVRAM_WR	=>TCNV_WE,
 	
-	VRET		=>VRTC,
-	HRET		=>HRTC,
+	VRET		=>VRTCr,
+	HRET		=>HRTCr,
 	-- DONE		=>TCNVDONE,
 	
 	clk			=>clk21m,
