@@ -87,6 +87,29 @@ signal	LINESKIP	:std_logic;
 signal	fATTR		:std_logic_vector(79 downto 0);
 signal	LINES		:integer range 0 to MAXLINES;
 
+--Bound the ST_GETBUS wait so BUSREQn cannot remain asserted indefinitely. Not applied
+--to the MRAM_WAIT waits, where an SDRAM read is already outstanding and cannot be
+--cancelled.
+constant STUCKMAX	:integer	:=511;
+signal	stuckcnt	:integer range 0 to STUCKMAX;
+
+--BUSACKn and MRAM_WAIT cross from the rclk domain into clk21m.
+--Sample the asynchronous inputs once before the FSM uses them.
+signal	MRAM_WAITr	:std_logic;
+signal	BUSACKnr	:std_logic;
+
+--Sample the remaining cross-domain inputs before use by the FSM.
+signal	VRETr,HRETr	:std_logic;
+signal	TEXTENr		:std_logic;
+
+--Keep the CDC sampling registers from being duplicated or retimed.
+attribute preserve : boolean;
+attribute dont_replicate : boolean;
+attribute dont_retime : boolean;
+attribute preserve of MRAM_WAITr, BUSACKnr, VRETr, HRETr, TEXTENr : signal is true;
+attribute dont_replicate of MRAM_WAITr, BUSACKnr, VRETr, HRETr, TEXTENr : signal is true;
+attribute dont_retime of MRAM_WAITr, BUSACKnr, VRETr, HRETr, TEXTENr : signal is true;
+
 begin
 
 	RDDAT<=MRAM_DAT when rTMODE='1' else TRAM_DAT;
@@ -127,15 +150,38 @@ begin
 			DONE<='0';
 			waitcount<=0;
 			LINESKIP<='0';
+			stuckcnt<=0;
+			MRAM_WAITr<='0';
+			BUSACKnr<='1';
+			VRETr<='1';
+			HRETr<='1';
+			TEXTENr<='0';
 		elsif(clk' event and clk='1')then
+			MRAM_WAITr<=MRAM_WAIT;
+			BUSACKnr<=BUSACKn;
+			VRETr<=VRET;
+			HRETr<=HRET;
+			TEXTENr<=TEXTEN;
 			TVRAM_WR<='0';
 			DONE<='0';
 			if(waitcount>0)then
 				waitcount<=waitcount-1;
 			else
+				--Only true in cycles where the state below does nothing, so the two
+				--assignments to STATE cannot collide.
+				if(STATE=ST_GETBUS and BUSACKnr='1')then
+					if(stuckcnt=STUCKMAX)then
+						stuckcnt<=0;
+						STATE<=ST_RELBUS;
+					else
+						stuckcnt<=stuckcnt+1;
+					end if;
+				else
+					stuckcnt<=0;
+				end if;
 				case STATE is
 				when ST_IDLE =>
-					if(lVRET='1' and VRET='0')then
+					if(lVRET='1' and VRETr='0')then
 						STXTADR<=TADR_TOP;
 						SATRADR<=TADR_TOP+x"0050";
 						SDSTADR<=(others=>'0');
@@ -150,7 +196,7 @@ begin
 						LINECNT<=0;
 						CURATR<="00000111";
 						LINESKIP<='0';
-					elsif(lHRET='1' and HRET='0' and TEXTEN='1')then
+					elsif(lHRET='1' and HRETr='0' and TEXTENr='1')then
 						CHARCNT<=0;
 						ATRCNT<=0;
 						if(LINECNT<MAXLINES)then
@@ -176,7 +222,7 @@ begin
 						end if;
 					end if;
 				when ST_GETBUS =>
-					if(BUSACKn='0')then
+					if(BUSACKnr='0')then
 						STATE<=ST_RDTXT;
 						BUS_USE<='1';
 					end if;
@@ -185,10 +231,11 @@ begin
 					RDADR<=CTXTADR;
 					STATE<=ST_RDTXT1;
 					if(rTMODE='1')then
-						waitcount<=2;
+						--One cycle more, to pay back the cycle spent registering MRAM_WAIT.
+						waitcount<=3;
 					end if;
 				when ST_RDTXT1 =>
-					if(rTMODE='0' or MRAM_WAIT='0')then
+					if(rTMODE='0' or MRAM_WAITr='0')then
 						MRAM_RDn<='1';
 						TVRAM_ADR<=CDSTADR;
 						if (LINESKIP='1')then
@@ -227,10 +274,11 @@ begin
 					RDADR<=CATRADR;
 					STATE<=ST_RDATR1;
 					if(rTMODE='1')then
-						waitcount<=2;
+						--One cycle more, to pay back the cycle spent registering MRAM_WAIT.
+						waitcount<=3;
 					end if;
 				when ST_RDATR1 =>
-					if(rTMODE='0' or MRAM_WAIT='0')then
+					if(rTMODE='0' or MRAM_WAITr='0')then
 						case(RDDAT(6 downto 4))is
 							when o"0"|o"1"|o"2"|o"3"|o"4" =>
 								iATTRCUL:=conv_integer(RDDAT);
@@ -258,10 +306,11 @@ begin
 					MRAM_RDn<='0';
 					STATE<=ST_RDATR3;
 					if(rTMODE='1')then
-						waitcount<=2;
+						--One cycle more, to pay back the cycle spent registering MRAM_WAIT.
+						waitcount<=3;
 					end if;
 				when ST_RDATR3 =>
-					if(rTMODE='0' or MRAM_WAIT='0')then
+					if(rTMODE='0' or MRAM_WAITr='0')then
 						if(COLOR='0' or ATTRCOLOR='0')then
 							CURATR(0)<='1';
 							CURATR(1)<='1';
@@ -331,8 +380,8 @@ begin
 				when others=>
 					STATE<=ST_RELBUS;
 				end case;
-				lVRET<=VRET;
-				lHRET<=HRET;
+				lVRET<=VRETr;
+				lHRET<=HRETr;
 			end if;
 		end if;
 	end process;
