@@ -1475,6 +1475,7 @@ signal	sndPSG	:std_logic_vector(15 downto 0);
 signal	sndPSG2	:std_logic_vector(15 downto 0);
 signal	monosnd	:std_logic_vector(15 downto 0);
 signal	sndL,sndR	:std_logic_vector(15 downto 0);
+signal	sndLw,sndRw	:std_logic_vector(17 downto 0);
 signal	snddatL,usnddatL	:std_logic_vector(15 downto 0);
 signal	snddatR,usnddatR	:std_logic_vector(15 downto 0);
 signal	SB2_ADR		:std_logic_vector(1 downto 0);
@@ -2605,8 +2606,9 @@ end process;
 		FM2_CEn<=IORQ_n when CPUADR(7 downto 3)&CPUADR(1) ="101010" else '1';		--0xA8,A9,AC,AD
 		FM2_OE<='1'		when CPUADR(7 downto 3)&CPUADR(1) ="101010" and IORQ_n='0' and RD_n='0' else '0';
 		
-		SB1_CEn <= FM1_CEn	when (cSB2='0') else '1';
-		SB1_OE	<= FM1_OE	when (cSB2='0') else '0';
+		--The onboard OPN is only at 0x44,45 (as with USE_OPN=3); 0x46,47 read 0xFF
+		SB1_CEn <= FM1_CEn	when (cSB2='0' and CPUADR(1)='0') else '1';
+		SB1_OE	<= FM1_OE	when (cSB2='0' and CPUADR(1)='0') else '0';
 		SB2_CEn <= FM2_CEn	when (cSB2='0') else FM1_CEn;
 		SB2_OE	<= FM2_OE	when (cSB2='0') else FM1_OE;
 		SB2_ADR <= CPUADR(2)&CPUADR(0) when (cSB2='0') else CPUADR(1 downto 0);
@@ -2711,8 +2713,11 @@ end process;
 		sndPSG2(15 downto 14)<="00";
 		sndPSG2(1 downto 0)<="00";
 
-		sndL <= sndFM + sndFML + sndPSG + sndPSG2;
-		sndR <= sndFM + sndFMR + sndPSG + sndPSG2;
+		--Sum in 18 bits and saturate to 16 (the 16-bit sum wrapped around)
+		sndLw <= (sndFM(15)&sndFM(15)&sndFM) + (sndFML(15)&sndFML(15)&sndFML) + ("00"&sndPSG) + ("00"&sndPSG2);
+		sndRw <= (sndFM(15)&sndFM(15)&sndFM) + (sndFMR(15)&sndFMR(15)&sndFMR) + ("00"&sndPSG) + ("00"&sndPSG2);
+		sndL <= x"7fff" when sndLw(17)='0' and sndLw(16 downto 15)/="00" else x"8000" when sndLw(17)='1' and sndLw(16 downto 15)/="11" else sndLw(15 downto 0);
+		sndR <= x"7fff" when sndRw(17)='0' and sndRw(16 downto 15)/="00" else x"8000" when sndRw(17)='1' and sndRw(16 downto 15)/="11" else sndRw(15 downto 0);
 
 		sndmixL	:average generic map(16) port map(sndL,BEEPsnd,snddatL);
 		sndmixR	:average generic map(16) port map(sndR,BEEPsnd,snddatR);
