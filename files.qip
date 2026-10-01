@@ -18,6 +18,9 @@ set_global_assignment -name VHDL_FILE rtl/LIB/cdc_busport.vhd
 set_global_assignment -name VHDL_FILE rtl/LIB/iordwait.vhd
 set_global_assignment -name VHDL_FILE rtl/LIB/m1wait.vhd
 set_global_assignment -name VHDL_FILE rtl/LIB/gvwait.vhd
+set_global_assignment -name VHDL_FILE rtl/LIB/gvstretch.vhd
+set_global_assignment -name VHDL_FILE rtl/LIB/memwait.vhd
+set_global_assignment -name VHDL_FILE rtl/LIB/gvswait.vhd
 set_global_assignment -name VHDL_FILE rtl/LIB/DDS_OPN.vhd
 set_global_assignment -name QIP_FILE rtl/sound/OPN/RHYTHM/ROM_20RIM.qip
 set_global_assignment -name QIP_FILE rtl/sound/OPN/RHYTHM/ROM_10TOM.qip
@@ -119,7 +122,7 @@ set_global_assignment -name HEX_FILE rtl/PS2KB/kbtbln.hex
 set_global_assignment -name HEX_FILE rtl/PS2KB/kbtble0.hex
 set_global_assignment -name VHDL_FILE rtl/PS2KB/KBIF.vhd
 set_global_assignment -name VHDL_FILE rtl/PS2KB/KBMAP.vhd
-set_global_assignment -name QIP_FILE rtl/PS2KB/KBIO.qip
+set_global_assignment -name VHDL_FILE rtl/PS2KB/kbmirror.vhd
 set_global_assignment -name QIP_FILE rtl/PS2KB/KBTBLN.qip
 set_global_assignment -name QIP_FILE rtl/PS2KB/KBTBLE0.qip
 set_global_assignment -name VHDL_FILE rtl/VIDEO/CRTCP.vhd
