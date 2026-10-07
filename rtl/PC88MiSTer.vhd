@@ -190,11 +190,11 @@ component SDRAMCde0cvDEMU2
 		FECACK			:out std_logic;
 		
 		SNDADR			:in std_logic_vector(AWIDTH-1 downto 0);
-		SNDRD			:in std_logic;
+		SNDREQ			:in std_logic;
 		SNDWR			:in std_logic;
 		SNDRDAT			:out std_logic_vector(7 downto 0);
 		SNDWDAT			:in std_logic_vector(7 downto 0);
-		SNDWAIT			:out std_logic;
+		SNDACK			:out std_logic;
 		SNDH_Ln			:in std_logic;
 				
 		monout			:out std_logic_vector(7 downto 0);
@@ -606,7 +606,9 @@ port(
 
 	clk		:in std_logic;
 	ce_f	:in std_logic;
-	rstn	:in std_logic
+	rstn	:in std_logic;
+
+	VT24	:in std_logic
 );
 end component;
 
@@ -621,7 +623,9 @@ port(
 	ce_f	:out std_logic;
 
 	clk		:in std_logic;
-	rstn	:in std_logic
+	rstn	:in std_logic;
+
+	T24		:in std_logic
 );
 end component;
 
@@ -636,7 +640,9 @@ port(
 
 	clk		:in std_logic;
 	ce_f	:in std_logic;
-	rstn	:in std_logic
+	rstn	:in std_logic;
+
+	VRTC	:in std_logic
 );
 end component;
 
@@ -742,6 +748,7 @@ port(
 	CPUMD		:in std_logic;
 	GVSTR		:in std_logic;
 	VT24		:in std_logic;
+	VT15		:in std_logic;
 	TSET		:in std_logic_vector(17 downto 0);
 	
 	TADR_TOP	:in std_logic_vector(15 downto 0);
@@ -1282,6 +1289,7 @@ component JTOPNA
 		adpcm_din 	:in std_logic_vector(7 downto 0);
 		adpcm_wr	:out std_logic;
 		adpcm_dout	:out std_logic_vector(7 downto 0);
+		adpcm_wait	:in std_logic;
 
 		fm_snd_right	:out std_logic_vector(15 downto 0);
 		fm_snd_left		:out std_logic_vector(15 downto 0);
@@ -1413,6 +1421,7 @@ signal	cSBN		:std_logic;	-- Normal(SR): no YM2608
 signal	VTm,VTm2	:std_logic_vector(1 downto 0)	:="00";	-- pCoreConfig(4 downto 3) sampled on rclk
 signal	VT24		:std_logic	:='0';	-- 24kHz or 15kHz timing, taken at reset
 signal	VT15		:std_logic	:='0';	-- 15kHz timing, taken at reset
+signal	T24			:std_logic;	-- 24kHz timing
 signal	CRTC_C		:std_logic_vector(1 downto 0);
 signal	CRTC_SETL	:std_logic_vector(5 downto 0);
 signal	CRTC_SETR	:std_logic_vector(4 downto 0);
@@ -1842,6 +1851,13 @@ signal	PCMWR		:std_logic;
 signal	PCMRDAT	:std_logic_vector(7 downto 0);
 signal	PCMWDAT	:std_logic_vector(7 downto 0);
 signal	PCMRWAIT	:std_logic;
+--ADPCM RAM <-> SDRAM controller: sdrbridge on clk21m, as for the disk emulation.
+signal	SND_REQ,SND_REQr,SND_ACK,SND_ACKf	:std_logic;
+signal	SND_RADR	:std_logic_vector(RAMAWIDTH-1 downto 0);
+signal	SND_RWR		:std_logic;
+signal	SND_RWDAT	:std_logic_vector(15 downto 0);
+signal	SND_RRDAT	:std_logic_vector(15 downto 0);
+signal	SND_RDAT	:std_logic_vector(15 downto 0);
 
 --video signal
 signal	vidR3	:std_logic_vector(2 downto 0);
@@ -1907,6 +1923,7 @@ begin
 		end if;
 	end process;
 	pVideo24k<=VT24;
+	T24<=VT24 and not VT15;
 
 	srstna<=plllocked;	--LOADER_DONE and 
 	
@@ -2210,6 +2227,29 @@ port map(
 	FECACKs	:cdc_sync2 port map(FEC_ACK,FEC_ACKf,clk21m);
 	PCMADDRW<=ADDR_ADPCM(RAMAWIDTH-1 downto 18) & PCMADDR;
 
+	SNDB	:sdrbridge generic map(RAMAWIDTH,false) port map(
+		ADR		=>PCMADDRW,
+		RD		=>PCMRD,
+		WR		=>PCMWR,
+		WDAT	=>x"00" & PCMWDAT,
+		RDAT	=>SND_RDAT,
+		WAITo	=>PCMRWAIT,
+
+		REQ		=>SND_REQ,
+		REQADR	=>SND_RADR,
+		REQWR	=>SND_RWR,
+		REQWDAT	=>SND_RWDAT,
+		ACK		=>SND_ACKf,
+		ACKRDAT	=>SND_RRDAT,
+
+		clk		=>clk21m,
+		rstn	=>srstn21
+	);
+	PCMRDAT<=SND_RDAT(7 downto 0);
+	SND_RRDAT(15 downto 8)<=(others=>'0');
+	SNDREQs	:cdc_sync2 port map(SND_REQ,SND_REQr,rclk);
+	SNDACKs	:cdc_sync2 port map(SND_ACK,SND_ACKf,clk21m);
+
 	RAM	:SDRAMCde0cvDEMU2 generic map(RAMCAWIDTH,RAMAWIDTH,ramclk/1000,64000/8192)
 	port map(
 		PMEMCKE			=>pMemCke,
@@ -2278,12 +2318,12 @@ port map(
 		FECWDAT			=>FEC_RWDAT,
 		FECACK			=>FEC_ACK,
 		
-		SNDADR			=>PCMADDRW,
-		SNDRD				=>PCMRD,
-		SNDWR				=>PCMWR,
-		SNDRDAT			=>PCMRDAT,
-		SNDWDAT			=>PCMWDAT,
-		SNDWAIT			=>PCMRWAIT,
+		SNDADR			=>SND_RADR,
+		SNDREQ			=>SND_REQr,
+		SNDWR				=>SND_RWR,
+		SNDRDAT			=>SND_RRDAT(7 downto 0),
+		SNDWDAT			=>SND_RWDAT(7 downto 0),
+		SNDACK			=>SND_ACK,
 		SNDH_Ln			=>'0',
 
 		monout			=>open,
@@ -2390,6 +2430,7 @@ port map(
 	CPUMD		=>TCNV_CPUMD,
 	GVSTR		=>GVSTRr,
 	VT24		=>VT24,
+	VT15		=>VT15,
 	TSET		=>CRTC_TSET,
 	
 	TADR_TOP	=>TRAMTOP,
@@ -2706,13 +2747,13 @@ port map(
 		'1' when GHSMv='1' and GVAM='0' else
 		'0';
 	GV_other<=not (WAIT_nb and M1_WAITn and MEM_WAITn);
-	GVW		:GVWAIT port map(GVSEL,GV_other,CPUMD,GVEN,GV_WAITn,rclk,cpuce_f,CPU_rstnr);
+	GVW		:GVWAIT port map(GVSEL,GV_other,CPUMD,GVEN,GV_WAITn,rclk,cpuce_f,CPU_rstnr,VRTCr);
 	-- V1S and N slow down the whole CPU while graphic VRAM is selected for
 	-- direct access (5Ch-5Eh) and the graphic screen is being displayed,
 	-- as measured on a real FH. Every user of cpuce_r/cpuce_f gets the
 	-- slowed enables.
 	GVSTR<='1' when cV1S='1' and G_PLANESEL='1' and GVAM='0' and GRAPHEN='1' and VRTCr='0' and GHSMv='0' else '0';
-	GVS		:GVSTRETCH port map(cpuce_r0,cpuce_f0,GVSTR,CPUMD,cpuce_r,cpuce_f,rclk,CPU_rstnr);
+	GVS		:GVSTRETCH port map(cpuce_r0,cpuce_f0,GVSTR,CPUMD,cpuce_r,cpuce_f,rclk,CPU_rstnr,T24);
 	--TRAMCONV takes GVSTR from this register, as for VRTCr.
 	process(rclk)begin
 		if(rclk' event and rclk='1')then
@@ -2727,7 +2768,7 @@ port map(
 	-- Wait states on graphic VRAM reads and writes in V1S and N with direct
 	-- access, as measured on a real FH. GVWAIT above covers the ALU.
 	GVSEN<='1' when cV1S='1' and GVAM='0' and GHSMv='0' else '0';
-	GVSW	:GVSWAIT port map(GVSEL,GV_other,CPUMD,GVSTR,GVSEN,GVS_WAITn,rclk,cpuce_f,CPU_rstnr);
+	GVSW	:GVSWAIT port map(GVSEL,GV_other,CPUMD,GVSTR,GVSEN,GVS_WAITn,rclk,cpuce_f,CPU_rstnr,VT24);
 	
 	process(rclk,srstn)begin
 		if(srstn='0')then
@@ -3142,6 +3183,7 @@ end process;
 			adpcm_wr	=>PCMWR,
 			adpcm_din	=>PCMRDAT,
 			adpcm_dout	=>PCMWDAT,
+			adpcm_wait	=>PCMRWAIT,
 
 			fm_snd_right	=>sndFMR,
 			fm_snd_left		=>sndFML,
@@ -3242,6 +3284,7 @@ end process;
 			adpcm_wr	=>PCMWR,
 			adpcm_din	=>PCMRDAT,
 			adpcm_dout	=>PCMWDAT,
+			adpcm_wait	=>PCMRWAIT,
 
 			fm_snd_right	=>sndFMR,
 			fm_snd_left		=>sndFML,
