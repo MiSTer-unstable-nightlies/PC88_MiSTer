@@ -4625,7 +4625,9 @@ begin
 	--turn them into 1.
 	sSN<='0';
 	sBC<='0';
-	ST3<='0' & not WPRT & not readyv(conv_integer(uselb)) & not track0s & TWOSIDE(conv_integer(uselb)) & sideb & uselb;
+	--RY: the READY pin is tied active on this board, so the real machine reports
+	--ready for every drive, even drives 2 and 3 that are not there.
+	ST3<='0' & not WPRT & '1' & not track0s & TWOSIDE(conv_integer(uselb)) & sideb & uselb;
 	MSR<=sRQM & sDIO & sEXM & sCB & sDxB;
 	
 	RDAT<=	RDDAT_DAT when DACKn='0' else
@@ -4758,10 +4760,11 @@ begin
 	seek_sft2	<=seek_sft when seekusel="10" else '0';
 	seek_sft3	<=seek_sft when seekusel="11" else '0';
 	
+	--No head settling time after a seek: the uPD765 has none.
 	hds0	:headseek generic map(maxtrack,30,0) port map(
 		desttrack	=>seek_cyl0,
 		destset		=>seek_bgnv(0),
-		setwait		=>30,
+		setwait		=>0,
 
 		curtrack	=>seek_cur0,
 	
@@ -4782,7 +4785,7 @@ begin
 	hds1	:headseek generic map(maxtrack,30,0) port map(
 		desttrack	=>seek_cyl1,
 		destset		=>seek_bgnv(1),
-		setwait		=>30,
+		setwait		=>0,
 	
 		curtrack	=>seek_cur1,
 	
@@ -4803,7 +4806,7 @@ begin
 	hds2	:headseek generic map(maxtrack,30,0) port map(
 		desttrack	=>seek_cyl2,
 		destset		=>seek_bgnv(2),
-		setwait		=>30,
+		setwait		=>0,
 	
 		curtrack	=>seek_cur2,
 	
@@ -4824,7 +4827,7 @@ begin
 	hds3	:headseek generic map(maxtrack,30,0) port map(
 		desttrack	=>seek_cyl3,
 		destset		=>seek_bgnv(3),
-		setwait		=>30,
+		setwait		=>0,
 	
 		curtrack	=>seek_cur3,
 	
