@@ -486,6 +486,11 @@ port(
 	GAM		:in std_logic;
 	NSEL	:in integer range 0 to 3;
 
+	PKIND	:in std_logic_vector(33 downto 0)	:=(others=>'0');
+	LASTDo0	:out std_logic_vector(7 downto 0);
+	LASTDo1	:out std_logic_vector(7 downto 0);
+	LASTDo2	:out std_logic_vector(7 downto 0);
+
 	clk		:in std_logic;
 	rstn	:in std_logic
 );
@@ -627,7 +632,8 @@ end component;
 
 component WRPOST
 generic(
-	AWIDTH	:integer	:=25
+	AWIDTH	:integer	:=25;
+	KW		:integer	:=1
 );
 port(
 	RD		:in std_logic;
@@ -636,7 +642,7 @@ port(
 	ADR		:in std_logic_vector(AWIDTH-1 downto 0);
 	WDAT	:in std_logic_vector(7 downto 0);
 	WE		:in std_logic_vector(3 downto 0);
-	KIND	:in std_logic	:='0';
+	KIND	:in std_logic_vector(KW-1 downto 0)	:=(others=>'0');
 	WAITo	:out std_logic;
 
 	oRD		:out std_logic;
@@ -644,7 +650,7 @@ port(
 	oADR	:out std_logic_vector(AWIDTH-1 downto 0);
 	oWDAT	:out std_logic_vector(7 downto 0);
 	oWE		:out std_logic_vector(3 downto 0);
-	oKIND	:out std_logic;
+	oKIND	:out std_logic_vector(KW-1 downto 0);
 	WAITi	:in std_logic;
 
 	clk		:in std_logic;
@@ -1738,8 +1744,6 @@ signal	IDAT_IOR32	:std_logic_vector(7 downto 0);
 signal	IOR32_OE	:std_logic;
 signal	IDAT_IOR33	:std_logic_vector(7 downto 0);
 signal	IOR33_OE	:std_logic;
-signal	IDAT_IOR38	:std_logic_vector(7 downto 0);
-signal	IOR38_OE	:std_logic;
 signal	IDAT_IOR40	:std_logic_vector(7 downto 0);
 signal	IOR40_OE	:std_logic;
 signal	IDAT_IOR6e	:std_logic_vector(7 downto 0);
@@ -1893,10 +1897,11 @@ signal	ALU2		:std_logic_vector(1 downto 0);
 signal	GDM			:std_logic_vector(1 downto 0);
 signal	PLN			:std_logic_vector(2 downto 0);
 signal	GVAM		:std_logic;
-signal	GVAMw		:std_logic;	-- GVAM for GraphALU: '0' while a posted direct write is at the port
-signal	GVDW		:std_logic;	-- this request is a direct graphic VRAM write
-signal	GVDP		:std_logic;	-- a direct graphic VRAM write here may be posted
-signal	GVDWp		:std_logic;
+signal	GVDW		:std_logic;	-- this request is a graphic VRAM write that is posted
+signal	GVDP		:std_logic;	-- a graphic VRAM write here may be posted
+signal	GVKIND		:std_logic_vector(33 downto 0);	-- WRPOST KIND: GVDW, GraphALU state (see GraphALU)
+signal	GVKINDp		:std_logic_vector(33 downto 0);	-- GVKIND of the posted write at the port
+signal	LASTD0,LASTD1,LASTD2	:std_logic_vector(7 downto 0);	-- GraphALU last read
 signal	NG_RAMSEL	:integer range 0 to 3;
 signal	GR_RSEL		:integer range 0 to 3;
 signal	GWME		:std_logic;
@@ -2473,9 +2478,14 @@ port map(
 	
 	PLN		=>PLN,
 
-	GVAM	=>GVAMw,
+	GVAM	=>GVAM,
 	GAM		=>GAM,
 	NSEL	=>NG_RAMSEL,
+
+	PKIND	=>GVKINDp,
+	LASTDo0	=>LASTD0,
+	LASTDo1	=>LASTD1,
+	LASTDo2	=>LASTD2,
 
 	clk		=>rclk,
 	rstn	=>CPU_rstnr
@@ -2705,29 +2715,32 @@ port map(
 
 	-- CPU writes outside graphic VRAM are posted: a real FH has no wait state on
 	-- them at 4MHz and one at 8MHz (MEMWAIT), with the SDRAM write done later.
-	-- Graphic VRAM writes through the ALU are not, as the port reads the ALU
-	-- while it writes. Direct graphic VRAM writes are posted too (GVDP): a real
-	-- FH waits on them as long as on a read. In V1H, V2 and the V1S high-speed
-	-- mode only at 4MHz, where the FH waits no state on them in the retrace or
-	-- with the graphic screen off; the 8MHz counts of GVWAIT were measured with
-	-- the write held by SDRAM.
-	GVDP<='1' when GVAM='0' and (GVSEN='1' or CPUMD='0') else '0';
+	-- Direct graphic VRAM writes are posted too (GVDP): a real FH waits on them
+	-- as long as on a read. In V1H, V2 and the V1S high-speed mode only at 4MHz,
+	-- where the FH waits no state on them in the retrace or with the graphic
+	-- screen off; the 8MHz counts of GVWAIT were measured with the write held by
+	-- SDRAM. Writes through the ALU are posted in V2 at 4MHz, where a real FH
+	-- and MA write them as fast as direct writes (WRPOST keeps the ALU state).
+	GVDP<='1' when GVAM='0' and (GVSEN='1' or CPUMD='0') else
+		'1' when GVAM='1' and CPUMD='0' and MODE=MOD_V2 else
+		'0';
 	RAM_POST<='1' when CLR_OE='0' and LOADER_OEr='0' and TCNV_BUSUSE='0' and (GVSEL='0' or GVDP='1') else '0';
-	-- A direct graphic VRAM write writes the CPU byte on the planes latched in
-	-- WRPOST. While such a write is posted, GraphALU is kept in that mode, so a
-	-- later OUT to the ALU registers does not change what it writes.
+	-- A posted graphic VRAM write is written with the GraphALU state latched in
+	-- WRPOST with it (GVAM, GDM, ALU0-2 and the last read), so a later OUT to
+	-- the ALU registers, a read or a CPU reset does not change what it writes.
+	-- A direct write writes the CPU byte on the planes latched in WRPOST.
 	GVDW<=GVSEL and GVDP;
-	GVAMw<=GVAM and not GVDWp;
+	GVKIND<=GVDW & GVAM & GDM & ALU2 & ALU1 & ALU0 & LASTD2 & LASTD1 & LASTD0;
 	-- Text DMA reads keep to window 1, so the text timing does not change.
 	RAM_RDV2<=not TCNV_BUSUSE;
-	WRP	:WRPOST generic map(RAMAWIDTH) port map(
+	WRP	:WRPOST generic map(RAMAWIDTH,34) port map(
 		RD		=>RAM_RD,
 		WR		=>RAM_WR,
 		POST	=>RAM_POST,
 		ADR		=>RAMADR,
 		WDAT	=>RAM_WDAT,
 		WE		=>VRAMWE,
-		KIND	=>GVDW,
+		KIND	=>GVKIND,
 		WAITo	=>RAM_WAIT,
 
 		oRD		=>RAM_RDo,
@@ -2735,7 +2748,7 @@ port map(
 		oADR	=>RAMADRo,
 		oWDAT	=>RAM_WDATo,
 		oWE		=>VRAMWEo,
-		oKIND	=>GVDWp,
+		oKIND	=>GVKINDp,
 		WAITi	=>RAM_WAITi,
 
 		clk		=>rclk,
@@ -3071,7 +3084,8 @@ port map(
 	IO33	:IO_RWS generic map(x"33")port map(CPUADR(7 downto 0),IORQ_n,RD_n,WR_n,CPUDAT_W,IDAT_IOR33,IOR33_OE,open,open,open,open,open,open,open,open,rclk,CPU_rstnr,cpuce_r);
 	IOW34	:IO_WRS generic map(x"34")port map(CPUADR(7 downto 0),IORQ_n,WR_n,CPUDAT_W,open,ALU2(1),ALU1(1),ALU0(1),open,ALU2(0),ALU1(0),ALU0(0),rclk,CPU_rstnr,cpuce_r);
 	IOW35	:IO_WRS generic map(x"35")port map(CPUADR(7 downto 0),IORQ_n,WR_n,CPUDAT_W,GAM,open,GDM(1),GDM(0),open,PLN(2),PLN(1),PLN(0),rclk,CPU_rstnr,cpuce_r);
-	IO38	:IO_RWS generic map(x"38")port map(CPUADR(7 downto 0),IORQ_n,RD_n,WR_n,CPUDAT_W,IDAT_IOR38,IOR38_OE,open,open,open,open,open,open,open,TVRMODE,rclk,CPU_rstnr,cpuce_r);
+	--A PC-8801FH has no port 38h, so writes to it are ignored.
+	TVRMODE<='0';
 	IOR40	:IO_RD generic map(x"40")port map(CPUADR(7 downto 0),IORQ_n,RD_n,IDAT_IOR40,IOR40_OE,'1','1',VRTC,CDI,cDisk,DCD,VT15,'1');
 	IOW40	:IO_WRS generic map(x"40")port map(CPUADR(7 downto 0),IORQ_n,WR_n,CPUDAT_W,sing,pStr,beepen,GHSM,open,CCK,CSTB,open,rclk,CPU_rstnr,cpuce_r);
 	IOR6e	:IO_RD generic map(x"6e")port map(CPUADR(7 downto 0),IORQ_n,RD_n,IDAT_IOR6e,IOR6e_OE,not CPUMD,'0','0','1','0','0','0','0');
