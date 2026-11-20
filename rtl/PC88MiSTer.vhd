@@ -455,6 +455,8 @@ port(
 	SETV	:out std_logic_vector(2 downto 0);
 	SETOK	:out std_logic;
 	CRTRST	:out std_logic;
+	CMDTOG	:out std_logic;
+	DU		:in std_logic;
 	
 	mon0	:out std_logic_vector(7 downto 0);
 	mon1	:out std_logic_vector(7 downto 0);
@@ -957,6 +959,7 @@ port(
 	DMPD	:out std_logic;
 	DMSPL	:out std_logic;
 	DMSPM	:out std_logic_vector(7 downto 0);
+	DMSPX	:out std_logic;
 	DMSPA	:out std_logic_vector(15 downto 0);
 	DMRSA	:out std_logic_vector(15 downto 0)
 );
@@ -1016,12 +1019,17 @@ port(
 	DMPD		:in std_logic;
 	DMSPL		:in std_logic;
 	DMSPM		:in std_logic_vector(7 downto 0);
+	DMSPX		:in std_logic;
 	DMSPA		:in std_logic_vector(15 downto 0);
 	DMRSA		:in std_logic_vector(15 downto 0);
 	
 	CPUBUS		:in std_logic;
 	CPUM1n		:in std_logic;
 	CRTRST		:in std_logic;
+	CRTCON		:in std_logic;
+	DMAON		:in std_logic;
+	CRTCMD		:in std_logic;
+	DU			:out std_logic;
 	clk			:in std_logic;
 	ce			:in std_logic;
 	rstn		:in std_logic
@@ -1716,6 +1724,8 @@ signal	CRTC_SETR	:std_logic_vector(4 downto 0);
 signal	CRTC_SETV	:std_logic_vector(2 downto 0);
 signal	CRTC_SETOK	:std_logic;
 signal	CRTC_RST	:std_logic;
+signal	CRTC_CMDT	:std_logic;
+signal	TCNV_DU		:std_logic;
 signal	CRTC_TSET	:std_logic_vector(17 downto 0);
 signal	TCROSS_ce	:std_logic;
 
@@ -1824,6 +1834,7 @@ signal	TDMA_WE		:std_logic_vector(1 downto 0);
 signal	TDMA_CF,TDMA_PD	:std_logic;
 signal	TDMA_SPL	:std_logic;
 signal	TDMA_SPM	:std_logic_vector(7 downto 0);
+signal	TDMA_SPX	:std_logic;
 signal	TDMA_SPA,TDMA_RSA	:std_logic_vector(15 downto 0);
 signal	DMA_OE		:std_logic;
 signal	IDAT_IOR71	:std_logic_vector(7 downto 0);
@@ -2987,12 +2998,17 @@ port map(
 	DMPD		=>TDMA_PD,
 	DMSPL		=>TDMA_SPL,
 	DMSPM		=>TDMA_SPM,
+	DMSPX		=>TDMA_SPX,
 	DMSPA		=>TDMA_SPA,
 	DMRSA		=>TDMA_RSA,
 	
 	CPUBUS		=>BUSSEL,
 	CPUM1n		=>M1_n,
 	CRTRST		=>CRTC_RST,
+	CRTCON		=>CRTCen,
+	DMAON		=>TDMAEN,
+	CRTCMD		=>CRTC_CMDT,
+	DU			=>TCNV_DU,
 	clk			=>rclk,
 	ce			=>tcnv_ce,
 	rstn		=>CPU_rstnr
@@ -3062,6 +3078,8 @@ port map(
 	SETV	=>CRTC_SETV,
 	SETOK	=>CRTC_SETOK,
 	CRTRST	=>CRTC_RST,
+	CMDTOG	=>CRTC_CMDT,
+	DU		=>TCNV_DU,
 
 	clk		=>rclk,
 	rstn	=>CPU_rstnr,
@@ -3203,7 +3221,7 @@ port map(
 	IOR6e	:IO_RD generic map(x"6e")port map(CPUADR(7 downto 0),IORQ_n,RD_n,IDAT_IOR6e,IOR6e_OE,not CPUMD,'0','0','1','0','0','0','0');
 	IOW53	:IO_WRS generic map(x"53")port map(CPUADR(7 downto 0),IORQ_n,WR_n,CPUDAT_W,open,open,open,open,GxDS(2),GxDS(1),GxDS(0),TEXTDS,rclk,CPU_rstnr,cpuce_r);
 	IOWaa	:IO_WRS generic map(x"aa")port map(CPUADR(7 downto 0),IORQ_n,WR_n,CPUDAT_W,S2INTM,open,open,open,open,open,open,open,rclk,CPU_rstnr,cpuce_r);
-	TDREG	:TDMAREGS generic map(x"64",x"65",x"68") port map(CPUADR(7 downto 0),IORQ_n,WR_n,CPUDAT_W,TRAMTOP,TRAMLEN,TDMAEN,rclk,CPU_rstnr,cpuce_r,RD_n,IDAT_DMA,DMA_OE,TDMA_REQ,TDMA_LEN,TDMA_NXA,TDMA_NXR,TDMA_RLA,TDMA_RLR,TDMA_OK,TDMA_WE,TDMA_CF,TDMA_PD,TDMA_SPL,TDMA_SPM,TDMA_SPA,TDMA_RSA);
+	TDREG	:TDMAREGS generic map(x"64",x"65",x"68") port map(CPUADR(7 downto 0),IORQ_n,WR_n,CPUDAT_W,TRAMTOP,TRAMLEN,TDMAEN,rclk,CPU_rstnr,cpuce_r,RD_n,IDAT_DMA,DMA_OE,TDMA_REQ,TDMA_LEN,TDMA_NXA,TDMA_NXR,TDMA_RLA,TDMA_RLR,TDMA_OK,TDMA_WE,TDMA_CF,TDMA_PD,TDMA_SPL,TDMA_SPM,TDMA_SPX,TDMA_SPA,TDMA_RSA);
 	pStrA<=pStr;
 	pStrB<=pStr;
 	
@@ -3355,7 +3373,7 @@ port map(
 	end process;
 	GVSIOC<='1' when IORQ_n='0' and M1_n='1' and GVSACK='0' and FMWSEL='0' else '0';
 	GVS		:GVSTRETCH port map(cpuce_r0,cpuce_f0,GVSTR,CPUMD,cpuce_r,cpuce_f,rclk,CPU_rstnr,T24,GVSIOC,CPUM1T5,CPUM1T6,GVSTXA,CPUMRD,CPUMCYC);
-	GVSTXA<=CRTCen and TDMAEN;
+	GVSTXA<=CRTCen and TDMAEN and not TCNV_DU;
 	--TRAMCONV takes GVSTR from this register, as for VRTCr.
 	process(rclk)begin
 		if(rclk' event and rclk='1')then
@@ -3434,7 +3452,7 @@ port map(
 	LOWRES		=>LOWRES,
 	GCOLOR		=>GCOLOR,
 	MONOEN		=>not GxDS,
-	TXTEN		=>((not TEXTDS) and TXTen and CRTCen and TDMAEN),
+	TXTEN		=>((not TEXTDS) and TXTen and CRTCen and TDMAEN and not TCNV_DU),
 	CRTCEN		=>CRTCen,
 	REVERSE		=>REVERSE,
 	
