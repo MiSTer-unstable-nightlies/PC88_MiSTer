@@ -92,6 +92,7 @@ port(
     -- DIP switch, Lamp ports
 	pDip        : in std_logic_vector(9 downto 0);
 	pCoreConfig	: in std_logic_vector(5 downto 0);
+	pNumArrow	: in std_logic	:='0';
 	pLed        : out std_logic;
 	pPsw		: in std_logic_vector(1 downto 0);
 	pMonDbus	:out std_logic_vector(7 downto 0);
@@ -411,8 +412,11 @@ port(
 	SETL		:in std_logic_vector(5 downto 0)	:=(others=>'0');
 	SETR		:in std_logic_vector(4 downto 0)	:=(others=>'0');
 	SETV		:in std_logic_vector(2 downto 0)	:=(others=>'0');
+	SETH		:in std_logic_vector(6 downto 0)	:="1001110";
+	SETZ		:in std_logic_vector(4 downto 0)	:="11000";
 	SETOK		:in std_logic	:='0';
-	TSET		:out std_logic_vector(18 downto 0)
+	TSET		:out std_logic_vector(18 downto 0);
+	TLINE		:out std_logic_vector(6 downto 0)
 );
 end component;
 
@@ -455,6 +459,8 @@ port(
 	SETL	:out std_logic_vector(5 downto 0);
 	SETR	:out std_logic_vector(4 downto 0);
 	SETV	:out std_logic_vector(2 downto 0);
+	SETH	:out std_logic_vector(6 downto 0);
+	SETZ	:out std_logic_vector(4 downto 0);
 	SETOK	:out std_logic;
 	CRTRST	:out std_logic;
 	CMDTOG	:out std_logic;
@@ -987,6 +993,8 @@ port(
 	VT24		:in std_logic;
 	VT15		:in std_logic;
 	TSET		:in std_logic_vector(18 downto 0);
+	SETH		:in std_logic_vector(6 downto 0);
+	TLINE		:in std_logic_vector(6 downto 0);
 	
 	TADR_TOP	:in std_logic_vector(15 downto 0);
 
@@ -1059,6 +1067,7 @@ port(
 	KBRX	:out std_logic;
 	KBEN	:in std_logic	:='1';
 	USLAYOUT:in std_logic	:='0';
+	NUMARROW:in std_logic	:='0';
 	
 	monout	:out std_logic_vector(7 downto 0);
 
@@ -1710,6 +1719,7 @@ signal	c40C		:std_logic;
 signal	cDisk		:std_logic;
 signal	cInDev		:std_logic;
 signal	cKbUS		:std_logic;
+signal	cNumArrow	:std_logic;
 signal	cSB2		:std_logic;
 signal	cSBN		:std_logic;	-- Normal(SR): no YM2608
 signal	VTm,VTm2	:std_logic_vector(1 downto 0)	:="00";	-- the video timing from cfg_r
@@ -1726,11 +1736,14 @@ signal	CRTC_C		:std_logic_vector(1 downto 0);
 signal	CRTC_SETL	:std_logic_vector(5 downto 0);
 signal	CRTC_SETR	:std_logic_vector(4 downto 0);
 signal	CRTC_SETV	:std_logic_vector(2 downto 0);
+signal	CRTC_SETH	:std_logic_vector(6 downto 0);
+signal	CRTC_SETZ	:std_logic_vector(4 downto 0);
 signal	CRTC_SETOK	:std_logic;
 signal	CRTC_RST	:std_logic;
 signal	CRTC_CMDT	:std_logic;
 signal	TCNV_DU		:std_logic;
 signal	CRTC_TSET	:std_logic_vector(18 downto 0);
+signal	CRTC_TLINE	:std_logic_vector(6 downto 0);
 signal	TCROSS_ce	:std_logic;
 
 signal	SDI			:std_logic;
@@ -2305,6 +2318,7 @@ begin
 		if (clk21m' event and clk21m='1') then
 			cInDev	<=pCoreConfig(0);
 			cKbUS	<=pCoreConfig(5);
+			cNumArrow<=pNumArrow;
 			cSB2	<=pCoreConfig(1);
 			cSBN	<=not(pCoreConfig(1) or pCoreConfig(2));
 		end if;
@@ -2969,6 +2983,8 @@ port map(
 	VT24		=>VT24,
 	VT15		=>VT15,
 	TSET		=>CRTC_TSET,
+	SETH		=>CRTC_SETH,
+	TLINE		=>CRTC_TLINE,
 	
 	TADR_TOP	=>TRAMTOP,
 
@@ -3083,6 +3099,8 @@ port map(
 	SETL	=>CRTC_SETL,
 	SETR	=>CRTC_SETR,
 	SETV	=>CRTC_SETV,
+	SETH	=>CRTC_SETH,
+	SETZ	=>CRTC_SETZ,
 	SETOK	=>CRTC_SETOK,
 	CRTRST	=>CRTC_RST,
 	CMDTOG	=>CRTC_CMDT,
@@ -3129,6 +3147,7 @@ port map(
 	-- KBRX	=>KBRX,
 	KBEN	=>'1',
 	USLAYOUT=>cKbUS,
+	NUMARROW=>cNumArrow,
 
 	monout	=>open,
 	
@@ -3494,8 +3513,11 @@ port map(
 	SETL		=>CRTC_SETL,
 	SETR		=>CRTC_SETR,
 	SETV		=>CRTC_SETV,
+	SETH		=>CRTC_SETH,
+	SETZ		=>CRTC_SETZ,
 	SETOK		=>CRTC_SETOK,
-	TSET		=>CRTC_TSET
+	TSET		=>CRTC_TSET,
+	TLINE		=>CRTC_TLINE
 	);
 
 	vidR8<=vidR3 & vidR3 & vidR3(2 downto 1);
